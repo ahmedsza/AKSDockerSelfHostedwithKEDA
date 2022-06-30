@@ -1,0 +1,94 @@
+// see https://github.com/HoussemDellai/build-agents-in-containers
+
+// setup variables
+$rgname='azdevops'
+$aksname='aksazdevops01'
+$location='southafricanorth'
+$ACR_NAME= 'acrazdevops001'
+$WINDOWS_USERNAME='azureadmin'
+$WINDOWS_PASSWORD='PUTINSTRONGPASSWORD_14ORCHARS'
+$PAT='YOURPATFROMZUREDEVOP'
+$devopsorg='https://dev.azure.com/<ORGNAME>'
+
+az group create -n $rgname -l $location
+
+az acr create -n $ACR_NAME -g $rgname --sku basic --location $location
+
+az aks create `
+    --resource-group $rgname `
+    --name $aksname `
+    --node-count 2 `
+    --generate-ssh-keys `
+    --windows-admin-username $WINDOWS_USERNAME `
+    --windows-admin-password $WINDOWS_PASSWORD `
+    --vm-set-type VirtualMachineScaleSets `
+    --kubernetes-version 1.22.6 `
+    --location $location `
+    --network-plugin azure `
+    --attach-acr $ACR_NAME
+
+
+az aks get-credentials --name $aksname --resource-group $rgname
+
+az aks nodepool add  --resource-group $rgname --cluster-name $aksname  --os-type Windows   --name npwin  --node-count 1
+
+kubectl get nodes
+
+
+// build the windows image using azure container registry build
+cd windows
+az acr build --platform windows --registry $ACR_NAME --image dockeragent-windows:0.1 . 
+cd ..
+
+// build the linux image using azure container registry build
+cd linux
+az acr build --platform linux --registry $ACR_NAME --image dockeragent-linux:0.1 . 
+cd ..
+
+// check what is in azure container registry
+az acr repository list --name $ACR_NAME  --output table
+az acr repository show-tags -n $ACR_NAME --repository dockeragent-linux
+az acr repository show-tags -n $ACR_NAME --repository dockeragent-windows
+
+kubectl apply -f .\linux\linuxazdevops.yaml
+kubectl apply -f .\windows\WinAzdevops.yaml
+
+kubectl get pods 
+
+
+run below to see the log details
+kubectl logs <podname> -f
+
+
+
+
+// install keda
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+kubectl create namespace keda
+helm install keda kedacore/keda --namespace keda
+
+// cleanup secret if needed
+kubectl delete secret pipeline-linux-auth 
+kubectl delete secret pipeline-windows-auth 
+
+// get pat from azure devops and name of org
+
+kubectl create secret generic pipeline-linux-auth --from-literal=personalAccessToken=$PAT --from-literal=organizationURL=$devopsorg  
+kubectl create secret generic pipeline-windows-auth --from-literal=personalAccessToken=$PAT --from-literal=organizationURL=$devopsorg  
+
+// apply the keda scaled objects
+kubectl apply -f .\linux\kedalinux.yaml
+kubectl apply -f .\linux\kedawindows.yaml
+
+// kick off pipelines in azure devops
+// check pods and deployments
+kubectl get pods 
+kubectl get deployments 
+
+
+// to cleanup
+
+
+#az aks delete -n $aksname --resource-group $rgname
+#az group delete  -n $rgname

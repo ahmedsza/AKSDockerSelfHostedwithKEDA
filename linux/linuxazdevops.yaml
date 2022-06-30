@@ -1,0 +1,36 @@
+# will need acrname, orgname,token and the name of the linux agent pool created in azure devops
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dockeragent-deployment-linux
+  labels:
+    app: dockeragent-deployment-linux
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dockeragent-linux
+  template:
+    metadata:
+      labels:
+        app: dockeragent-linux
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      containers:
+      - name: dockeragent-linux
+        image: <ACRNAME>.azurecr.io/dockeragent-linux:0.1
+        ports:
+        - containerPort: 80
+        env:
+        - name: AZP_URL
+          value: "https://dev.azure.com/<ORGNAME>"
+        - name: AZP_TOKEN
+          value: <AZUREDEVOPSTOKEN>
+        - name: AZP_AGENT_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: AZP_POOL
+          value: <NAMEOFLINUXPOOLINAZUREDEVOP>

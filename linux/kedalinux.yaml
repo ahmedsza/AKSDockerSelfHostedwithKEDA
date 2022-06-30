@@ -1,0 +1,41 @@
+#apiVersion: v1
+#kind: Secret
+#type: Opaque
+#metadata:
+#  name: pipeline-linux-auth
+#data:
+#  personalAccessToken: <encoded personalAccessToken>
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: pipeline-trigger-auth-linux
+  namespace: default
+spec:
+  secretTargetRef:
+    - parameter: personalAccessToken
+      name: pipeline-linux-auth
+      key: personalAccessToken
+    - parameter: organizationURL
+      name: pipeline-linux-auth
+      key: organizationURL
+---
+# be sure to create an azure devops pools, get the poolid and put in line for poolid
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: azure-pipelines-scaledobject-linux
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: dockeragent-deployment-linux
+  minReplicaCount: 2
+  maxReplicaCount: 5 
+  triggers:
+  - type: azure-pipelines
+    metadata:
+      poolID: "20"
+      organizationURLFromEnv: "AZP_URL"
+    authenticationRef:
+     name: pipeline-trigger-auth-linux
